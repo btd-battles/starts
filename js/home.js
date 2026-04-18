@@ -48,6 +48,8 @@
     speedbananza: "1.png",
     speedmegaboostcards: "6.png",
   };
+  const DAILY_RESET_HOUR_UTC = 10;
+  const SCHEDULE_DAY_ADVANCE_HOURS = 2;
 
   const SCHEDULE_BY_MODE = {
     speedwithfirezomg: [
@@ -188,7 +190,21 @@
     };
 
     const dayLookup = ["Sun.", "Mon.", "Tue.", "Wed.", "Thur.", "Fri.", "Sat."];
-    const todayLabel = dayLookup[new Date().getDay()] || "";
+    const getScheduleTodayLabel = () => {
+      const now = new Date();
+      const cutoffHour =
+        (DAILY_RESET_HOUR_UTC - SCHEDULE_DAY_ADVANCE_HOURS + 24) % 24;
+      const currentMinutesUtc = now.getUTCHours() * 60 + now.getUTCMinutes();
+      const cutoffMinutesUtc = cutoffHour * 60;
+
+      let scheduleDay = now.getUTCDay();
+      if (currentMinutesUtc >= cutoffMinutesUtc) {
+        scheduleDay = (scheduleDay + 1) % 7;
+      }
+
+      return dayLookup[scheduleDay] || "";
+    };
+    const todayLabel = getScheduleTodayLabel();
     const isCurrentWeek = weekNumber === baselineWeekNumber;
 
     let useZomgA = true;
@@ -370,3 +386,4 @@
     }
   })();
 })();
+
