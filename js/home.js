@@ -23,7 +23,6 @@
   const NEW_ROTATION_START_WEEK = 423;
   const WEEKLY_RESET_BASE = new Date("2015-12-16T14:00:00+04:00").getTime();
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-  const PRE_WEEK_ROLLOVER_MS = 2 * 60 * 60 * 1000;
   const LIVE_WEEK_NUMBER = 569;
   const MONTH_NAMES = [
     "January",
@@ -49,8 +48,8 @@
     speedbananza: "1.png",
     speedmegaboostcards: "6.png",
   };
-
-  const getEffectiveNow = () => new Date(Date.now() + PRE_WEEK_ROLLOVER_MS);
+  const DAILY_RESET_HOUR_UTC = 10;
+  const SCHEDULE_DAY_ADVANCE_HOURS = 2;
 
   const SCHEDULE_BY_MODE = {
     speedwithfirezomg: [
@@ -129,7 +128,7 @@
   };
 
   const getNextWeeklyResetTime = () => {
-    const now = getEffectiveNow().getTime();
+    const now = Date.now();
     const cycles = Math.ceil((now - WEEKLY_RESET_BASE) / WEEK_MS);
     return new Date(WEEKLY_RESET_BASE + cycles * WEEK_MS);
   };
@@ -148,14 +147,6 @@
     const end = new Date(currentWeekEnd.getTime() - offsetWeeks * WEEK_MS);
     const start = new Date(end.getTime() - WEEK_MS);
     return { start, end };
-  };
-
-  const getEffectiveWeekNumber = () => {
-    const effectiveNowMs = getEffectiveNow().getTime();
-    const elapsedWeeks = Math.ceil(
-      (effectiveNowMs - WEEKLY_RESET_BASE) / WEEK_MS,
-    );
-    return Math.max(1, elapsedWeeks);
   };
 
   const formatWeekRange = (startDate, endDate) => {
@@ -200,8 +191,18 @@
 
     const dayLookup = ["Sun.", "Mon.", "Tue.", "Wed.", "Thur.", "Fri.", "Sat."];
     const getScheduleTodayLabel = () => {
-      const effectiveNow = getEffectiveNow();
-      return dayLookup[effectiveNow.getUTCDay()] || "";
+      const now = new Date();
+      const cutoffHour =
+        (DAILY_RESET_HOUR_UTC - SCHEDULE_DAY_ADVANCE_HOURS + 24) % 24;
+      const currentMinutesUtc = now.getUTCHours() * 60 + now.getUTCMinutes();
+      const cutoffMinutesUtc = cutoffHour * 60;
+
+      let scheduleDay = now.getUTCDay();
+      if (currentMinutesUtc >= cutoffMinutesUtc) {
+        scheduleDay = (scheduleDay + 1) % 7;
+      }
+
+      return dayLookup[scheduleDay] || "";
     };
     const todayLabel = getScheduleTodayLabel();
     const isCurrentWeek = weekNumber === baselineWeekNumber;
@@ -371,12 +372,8 @@
   (async () => {
     try {
       const data = await apiGet("leaderboard.php");
-      const apiWeekNumber = Number(data.weekNumber);
-      const effectiveWeekNumber = getEffectiveWeekNumber();
-      const weekNumber = Number.isFinite(apiWeekNumber)
-        ? Math.max(apiWeekNumber, effectiveWeekNumber)
-        : effectiveWeekNumber;
-      const modeName = getWeeklyModeName(weekNumber) || data.weekName || "";
+      const weekNumber = Number(data.weekNumber);
+      const modeName = data.weekName || getWeeklyModeName(weekNumber) || "";
       baselineWeekNumber = weekNumber;
       selectedWeekNumber = weekNumber;
       baselineModeName = modeName;
