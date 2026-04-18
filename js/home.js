@@ -23,7 +23,6 @@
   const NEW_ROTATION_START_WEEK = 423;
   const WEEKLY_RESET_BASE = new Date("2015-12-16T14:00:00+04:00").getTime();
   const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-  const PRE_WEEK_ROLLOVER_MS = 2 * 60 * 60 * 1000;
   const LIVE_WEEK_NUMBER = 569;
   const MONTH_NAMES = [
     "January",
@@ -49,10 +48,8 @@
     speedbananza: "1.png",
     speedmegaboostcards: "6.png",
   };
-  const DAILY_RESET_HOUR_UTC = 10;
-  const SCHEDULE_DAY_ADVANCE_HOURS = 2;
-
-  const getEffectiveNow = () => new Date(Date.now() + PRE_WEEK_ROLLOVER_MS);
+  const WEEKLY_ARENA_ADVANCE_MS = 2 * 60 * 60 * 1000;
+  const WEEKLY_ARENA_START_LABEL = "Wed.";
 
   const SCHEDULE_BY_MODE = {
     speedwithfirezomg: [
@@ -132,7 +129,6 @@
 
   const getNextWeeklyResetTime = () => {
     const now = Date.now();
-    const now = getEffectiveNow().getTime();
     const cycles = Math.ceil((now - WEEKLY_RESET_BASE) / WEEK_MS);
     return new Date(WEEKLY_RESET_BASE + cycles * WEEK_MS);
   };
@@ -153,12 +149,20 @@
     return { start, end };
   };
 
-  const getEffectiveWeekNumber = () => {
-    const effectiveNowMs = getEffectiveNow().getTime();
-    const elapsedWeeks = Math.ceil(
-      (effectiveNowMs - WEEKLY_RESET_BASE) / WEEK_MS,
-    );
-    return Math.max(1, elapsedWeeks);
+  const getArenaPresentationWeek = (weekNumber) => {
+    const week = Number(weekNumber);
+    const currentWeekEnd = getNextWeeklyResetTime();
+    const remainingMs = currentWeekEnd.getTime() - Date.now();
+    const shouldAdvanceEarly =
+      week === baselineWeekNumber &&
+      remainingMs > 0 &&
+      remainingMs <= WEEKLY_ARENA_ADVANCE_MS;
+
+    return {
+      weekNumber: shouldAdvanceEarly ? week + 1 : week,
+      highlightDay: shouldAdvanceEarly ? WEEKLY_ARENA_START_LABEL : null,
+      currentWeekEnd,
+    };
   };
 
   const formatWeekRange = (startDate, endDate) => {
@@ -180,7 +184,7 @@
     return `${startYear} ${startMonth} ${startDay} - ${endYear} ${endMonth} ${endDay}`;
   };
 
-  const applyScheduleColors = (listEl, weekNumber) => {
+  const applyScheduleColors = (listEl, weekNumber, highlightDay = null) => {
     const lines = Array.from(listEl.querySelectorAll(".arena-line"));
     if (!lines.length) {
       return;
@@ -202,23 +206,7 @@
     };
 
     const dayLookup = ["Sun.", "Mon.", "Tue.", "Wed.", "Thur.", "Fri.", "Sat."];
-    const getScheduleTodayLabel = () => {
-      const now = new Date();
-      const cutoffHour =
-        (DAILY_RESET_HOUR_UTC - SCHEDULE_DAY_ADVANCE_HOURS + 24) % 24;
-      const currentMinutesUtc = now.getUTCHours() * 60 + now.getUTCMinutes();
-      const cutoffMinutesUtc = cutoffHour * 60;
-
-      let scheduleDay = now.getUTCDay();
-      if (currentMinutesUtc >= cutoffMinutesUtc) {
-        scheduleDay = (scheduleDay + 1) % 7;
-      }
-
-      return dayLookup[scheduleDay] || "";
-      const effectiveNow = getEffectiveNow();
-      return dayLookup[effectiveNow.getUTCDay()] || "";
-    };
-    const todayLabel = getScheduleTodayLabel();
+    const todayLabel = highlightDay || dayLookup[new Date().getUTCDay()] || "";
     const isCurrentWeek = weekNumber === baselineWeekNumber;
 
     let useZomgA = true;
@@ -251,7 +239,7 @@
     });
   };
 
-  const renderSchedule = (modeName, weekNumber) => {
+  const renderSchedule = (modeName, weekNumber, highlightDay = null) => {
     const normalized = normalizeModeName(modeName);
     const schedule = SCHEDULE_BY_MODE[normalized] || null;
 
@@ -273,7 +261,7 @@
         : "Current week";
       scheduleEl.innerHTML =
         '<p class="arena-line">Schedule not available for this mode.</p>';
-      applyScheduleColors(scheduleEl, weekNumber);
+      applyScheduleColors(scheduleEl, weekNumber, highlightDay);
       return;
     }
 
@@ -297,7 +285,7 @@
       )
       .join("");
 
-    applyScheduleColors(scheduleEl, weekNumber);
+    applyScheduleColors(scheduleEl, weekNumber, highlightDay);
   };
 
   const renderUnavailable = (message) => {
@@ -361,9 +349,14 @@
   };
 
   const renderSelectedWeek = () => {
+    const presentation = getArenaPresentationWeek(selectedWeekNumber);
     const modeName =
-      getWeeklyModeName(selectedWeekNumber) || baselineModeName || "";
-    renderSchedule(modeName, selectedWeekNumber);
+      getWeeklyModeName(presentation.weekNumber) || baselineModeName || "";
+    renderSchedule(
+      modeName,
+      presentation.weekNumber,
+      presentation.highlightDay,
+    );
     updateWeekNavigationState();
   };
 
@@ -388,12 +381,6 @@
       const data = await apiGet("leaderboard.php");
       const weekNumber = Number(data.weekNumber);
       const modeName = data.weekName || getWeeklyModeName(weekNumber) || "";
-      const apiWeekNumber = Number(data.weekNumber);
-      const effectiveWeekNumber = getEffectiveWeekNumber();
-      const weekNumber = Number.isFinite(apiWeekNumber)
-        ? Math.max(apiWeekNumber, effectiveWeekNumber)
-        : effectiveWeekNumber;
-      const modeName = getWeeklyModeName(weekNumber) || data.weekName || "";
       baselineWeekNumber = weekNumber;
       selectedWeekNumber = weekNumber;
       baselineModeName = modeName;
